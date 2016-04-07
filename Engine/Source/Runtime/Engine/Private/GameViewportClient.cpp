@@ -294,7 +294,6 @@ void UGameViewportClient::Init(struct FWorldContext& WorldContext, UGameInstance
 	}
 	
 	AddCursor(EMouseCursor::Default, UISettings->DefaultCursor);
-	AddCursor(EMouseCursor::Hand, UISettings->DefaultCursor);
 	AddCursor(EMouseCursor::TextEditBeam, UISettings->TextEditBeamCursor);
 	AddCursor(EMouseCursor::Crosshairs, UISettings->CrosshairsCursor);
 	AddCursor(EMouseCursor::GrabHand, UISettings->GrabHandCursor);
