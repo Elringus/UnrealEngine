@@ -158,8 +158,8 @@ bool FAnalogCursor::HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEven
 		return true;
 	}
 
-	// Bottom face button is a click
-	if (Key == EKeys::Gamepad_FaceButton_Bottom)
+	// Bottom face button (hardcoding is dirty, you know?..) is a click
+	if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Gamepad_RightShoulder || Key == EKeys::Gamepad_RightTrigger)
 	{
 		FPointerEvent MouseEvent(
 			0,
