@@ -115,7 +115,20 @@ enum EResult
 	k_EResultTwoFactorCodeMismatch = 88,		// two factor code mismatch
 	k_EResultTwoFactorActivationCodeMismatch = 89,	// activation code for two-factor didn't match
 	k_EResultAccountAssociatedToMultiplePartners = 90,	// account has been associated with multiple partners
-	k_EResultNotModified = 91, // data not modified
+	k_EResultNotModified = 91,					// data not modified
+	k_EResultNoMobileDevice = 92,				// the account does not have a mobile device associated with it
+	k_EResultTimeNotSynced = 93,				// the time presented is out of range or tolerance
+	k_EResultSmsCodeFailed = 94,				// SMS code failure (no match, none pending, etc.)
+	k_EResultAccountLimitExceeded = 95,			// Too many accounts access this resource
+	k_EResultAccountActivityLimitExceeded = 96,	// Too many changes to this account
+	k_EResultPhoneActivityLimitExceeded = 97,	// Too many changes to this phone
+	k_EResultRefundToWallet = 98,				// Cannot refund to payment method, must use wallet
+	k_EResultEmailSendFailure = 99,				// Cannot send an email
+	k_EResultNotSettled = 100,					// Can't perform operation till payment has settled
+	k_EResultNeedCaptcha = 101,					// Needs to provide a valid captcha
+	k_EResultGSLTDenied = 102,					// a game server login token owned by this token's owner has been banned
+	k_EResultGSOwnerDenied = 103,				// game server owner is denied for other reason (account lock, community ban, vac ban, missing phone)
+	k_EResultInvalidItemType = 104,				// the type of thing we were requested to act on is invalid
 };
 
 // Error codes for use with the voice functions
@@ -248,6 +261,9 @@ enum EAppOwnershipFlags
 	k_EAppOwnershipFlags_LicensePermanent	= 0x0800,	// permanent license, not borrowed, or guest or freeweekend etc
 	k_EAppOwnershipFlags_LicenseRecurring	= 0x1000,	// Recurring license, user is charged periodically
 	k_EAppOwnershipFlags_LicenseCanceled	= 0x2000,	// Mark as canceled, but might be still active if recurring
+	k_EAppOwnershipFlags_AutoGrant			= 0x4000,	// Ownership is based on any kind of autogrant license
+	k_EAppOwnershipFlags_PendingGift		= 0x8000,	// user has pending gift to redeem
+	k_EAppOwnershipFlags_RentalNotActivated	= 0x10000,	// Rental hasn't been activated yet
 };
 
 
@@ -266,8 +282,8 @@ enum EAppType
 	k_EAppType_Guide				= 0x040,	// game guide, PDF etc
 	k_EAppType_Driver				= 0x080,	// hardware driver updater (ATI, Razor etc)
 	k_EAppType_Config				= 0x100,	// hidden app used to config Steam features (backpack, sales, etc)
-	k_EAppType_Film					= 0x200,	// A Movie (feature film)
-	k_EAppType_TVSeries				= 0x400,	// A TV or other video series which will have episodes and perhaps seasons
+	k_EAppType_Hardware				= 0x200,	// a hardware device (Steam Machine, Steam Controller, Steam Link, etc.)
+	// 0x400 is up for grabs here
 	k_EAppType_Video				= 0x800,	// A video component of either a Film or TVSeries (may be the feature, an episode, preview, making-of, etc)
 	k_EAppType_Plugin				= 0x1000,	// Plug-in types for other Apps
 	k_EAppType_Music				= 0x2000,	// Music files
@@ -317,6 +333,7 @@ enum EChatEntryType
 	k_EChatEntryTypeHistoricalChat = 11,	// a chat message from user's chat history or offilne message
 	k_EChatEntryTypeReserved1 = 12,
 	k_EChatEntryTypeReserved2 = 13,
+	k_EChatEntryTypeLinkBlocked = 14, // a link was removed by the chat filter.
 };
 
 
@@ -395,6 +412,54 @@ enum ENotificationPosition
 	k_EPositionTopRight = 1,
 	k_EPositionBottomLeft = 2,
 	k_EPositionBottomRight = 3,
+};
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Broadcast upload result details
+//-----------------------------------------------------------------------------
+enum EBroadcastUploadResult
+{
+	k_EBroadcastUploadResultNone = 0,	// broadcast state unknown
+	k_EBroadcastUploadResultOK = 1,		// broadcast was good, no problems
+	k_EBroadcastUploadResultInitFailed = 2,	// broadcast init failed
+	k_EBroadcastUploadResultFrameFailed = 3,	// broadcast frame upload failed
+	k_EBroadcastUploadResultTimeout = 4,	// broadcast upload timed out
+	k_EBroadcastUploadResultBandwidthExceeded = 5,	// broadcast send too much data
+	k_EBroadcastUploadResultLowFPS = 6,	// broadcast FPS too low
+	k_EBroadcastUploadResultMissingKeyFrames = 7,	// broadcast sending not enough key frames
+	k_EBroadcastUploadResultNoConnection = 8,	// broadcast client failed to connect to relay
+	k_EBroadcastUploadResultRelayFailed = 9,	// relay dropped the upload
+	k_EBroadcastUploadResultSettingsChanged = 10,	// the client changed broadcast settings 
+	k_EBroadcastUploadResultMissingAudio = 11,	// client failed to send audio data
+	k_EBroadcastUploadResultTooFarBehind = 12,	// clients was too slow uploading
+	k_EBroadcastUploadResultTranscodeBehind = 13,	// server failed to keep up with transcode
+};
+
+
+//-----------------------------------------------------------------------------
+// Purpose: codes for well defined launch options
+//-----------------------------------------------------------------------------
+enum ELaunchOptionType
+{
+	k_ELaunchOptionType_None		= 0,	// unknown what launch option does
+	k_ELaunchOptionType_Default		= 1,	// runs the game, app, whatever in default mode
+	k_ELaunchOptionType_SafeMode	= 2,	// runs the game in safe mode
+	k_ELaunchOptionType_Multiplayer = 3,	// runs the game in multiplayer mode
+	k_ELaunchOptionType_Config		= 4,	// runs config tool for this game
+	k_ELaunchOptionType_OpenVR		= 5,	// runs game in VR mode using OpenVR
+	k_ELaunchOptionType_Server		= 6,	// runs dedicated server for this game
+	k_ELaunchOptionType_Editor		= 7,	// runs game editor
+	k_ELaunchOptionType_Manual		= 8,	// shows game manual
+	k_ELaunchOptionType_Benchmark	= 9,	// runs game benchmark
+	k_ELaunchOptionType_Option1		= 10,	// generic run option, uses description field for game name
+	k_ELaunchOptionType_Option2		= 11,	// generic run option, uses description field for game name
+	k_ELaunchOptionType_Option3     = 12,	// generic run option, uses description field for game name
+	k_ELaunchOptionType_OtherVR		= 13,	// runs game in VR mode using the Oculus SDK or other vendor-specific VR SDK
+	k_ELaunchOptionType_OpenVROverlay = 14,	// runs an OpenVR dashboard overlay
+
+	
+	k_ELaunchOptionType_Dialog 		= 1000, // show launch options dialog
 };
 
 
@@ -920,8 +985,10 @@ public:
 
 		CRC32_t crc32;
 		CRC32_Init( &crc32 );
-		CRC32_ProcessBuffer( &crc32, pchExePath, V_strlen( pchExePath ) );
-		CRC32_ProcessBuffer( &crc32, pchAppName, V_strlen( pchAppName ) );
+		if ( pchExePath )
+			CRC32_ProcessBuffer( &crc32, pchExePath, V_strlen( pchExePath ) );
+		if ( pchAppName )
+			CRC32_ProcessBuffer( &crc32, pchAppName, V_strlen( pchAppName ) );
 		CRC32_Final( &crc32 );
 
 		// set the high-bit on the mod-id 

@@ -16,9 +16,9 @@
 #define INVALID_INDEX -1
 
 /** Compile Steam SDK version in use */
-#define STEAM_SDK_VER TEXT("1.32")
+#define STEAM_SDK_VER TEXT("1.36")
 /** Path of the current Steam SDK version in use */
-#define STEAM_SDK_VER_PATH TEXT("Steamv132")
+#define STEAM_SDK_VER_PATH TEXT("Steamv136")
 /** Root location of Steam SDK */
 #define STEAM_SDK_ROOT_PATH TEXT("Binaries/ThirdParty/Steamworks")
 
