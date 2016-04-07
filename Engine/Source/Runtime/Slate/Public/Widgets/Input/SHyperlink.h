@@ -60,7 +60,7 @@ public:
 
 	virtual FCursorReply OnCursorQuery( const FGeometry& MyGeometry, const FPointerEvent& CursorEvent ) const override
 	{
-		return FCursorReply::Cursor( EMouseCursor::Hand );
+		return FCursorReply::Cursor( EMouseCursor::Default );
 	}
 
 protected:
