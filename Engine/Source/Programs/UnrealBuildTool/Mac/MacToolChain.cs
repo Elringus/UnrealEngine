@@ -106,6 +106,8 @@ namespace UnrealBuildTool
 			Result += " -Wno-unused-private-field";
 			Result += " -Wno-invalid-offsetof"; // needed to suppress warnings about using offsetof on non-POD types.
 
+			Result += " -Wno-shift-negative-value"; // Triggered by ThirdParty/libJPG due to usage of: (-1) << ...
+
 			if (MacOSSDKVersionFloat < 10.9f && MacOSSDKVersionFloat >= 10.11f)
 			{
 				Result += " -Wno-inconsistent-missing-override"; // too many missing overrides...
