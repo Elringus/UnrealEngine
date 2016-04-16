@@ -123,7 +123,7 @@ FString FPaths::GameConfigDir()
 
 FString FPaths::GameSavedDir()
 {
-	return GameUserDir() + TEXT("Saved/");
+	return FPaths::GameDir() + TEXT("SaveData/");
 }
 
 FString FPaths::GameIntermediateDir()
