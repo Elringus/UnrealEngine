@@ -742,3 +742,14 @@ FString FOnlineSubsystemSteam::GetAppId() const
 {
 	return FString::Printf(TEXT("%d"),GetSteamAppId());
 }
+
+FString FOnlineSubsystemSteam::GetSteamLanguage()
+{
+	FString steamLanguage = TEXT("english"); // default
+	ISteamApps* steamApps = SteamApps();
+	if (steamApps)
+	{
+		steamLanguage = FString(ANSI_TO_TCHAR(steamApps->GetCurrentGameLanguage()));
+	}
+	return steamLanguage;
+}

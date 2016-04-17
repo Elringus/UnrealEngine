@@ -238,6 +238,8 @@ public:
 
 	// FOnlineSubsystemSteam
 
+	FString GetSteamLanguage();
+
 	/**
 	 * Whether or not the Steam Client interfaces are available; these interfaces are only available, if the Steam Client program is running
 	 * NOTE: These interfaces are made unavailable, when running a dedicated server
