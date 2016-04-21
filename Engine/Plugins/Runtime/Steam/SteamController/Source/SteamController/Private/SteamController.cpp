@@ -7,31 +7,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSteamController, Log, All);
 #if WITH_STEAM_CONTROLLER
 
 /** Name of the current Steam SDK version in use (matches directory name) */
-#define STEAM_SDK_VER TEXT("Steamv132")
-
-/** @todo - do something about this define */
-#ifndef MAX_STEAM_CONTROLLERS
-	#define MAX_STEAM_CONTROLLERS 8
-#endif
-
-/** Max number of controller buttons.  Must be < 256*/
-#define MAX_NUM_CONTROLLER_BUTTONS 26
-
-//
-// Gamepad thresholds
-//
-#define LEFT_THUMBPAD_DEADZONE  0
-#define RIGHT_THUMBPAD_DEADZONE 0
-
-namespace
-{
-	inline float ShortToNormalizedFloat(short AxisVal)
-	{
-			// normalize [-32768..32767] -> [-1..1]
-			const float Norm = (AxisVal <= 0 ? 32768.f : 32767.f);
-			return float(AxisVal) / Norm;
-	}
-};
+#define STEAM_SDK_VER TEXT("Steamv136")
 
 // Support function to load the proper version of the Steamworks library
 bool LoadSteamModule()
@@ -65,15 +41,11 @@ bool LoadSteamModule()
 	return true;
 }
 
-namespace SteamControllerKeyNames
+struct FSteamControllerState
 {
-	const FGamepadKeyNames::Type Touch0("Steam_Touch_0");
-	const FGamepadKeyNames::Type Touch1("Steam_Touch_1");
-	const FGamepadKeyNames::Type Touch2("Steam_Touch_2");
-	const FGamepadKeyNames::Type Touch3("Steam_Touch_3");
-	const FGamepadKeyNames::Type BackLeft("Steam_Back_Left");
-	const FGamepadKeyNames::Type BackRight("Steam_Back_Right");
-}
+	TMap<ControllerDigitalActionHandle_t, ControllerDigitalActionData_t> DigitalActionMap;
+	TMap<ControllerAnalogActionHandle_t, ControllerAnalogActionData_t> AnalogActionMap;
+};
 
 class FSteamController : public IInputDevice
 {
@@ -95,54 +67,91 @@ public:
 			// [RCL] 2015-01-23 FIXME: move to some other code than constructor so we can handle failures more gracefully
 		if (bAPIInitialized && (SteamController() != nullptr))
 		{
-			FString PluginsDir = FPaths::EnginePluginsDir();
-			FString ContentDir = FPaths::Combine(*PluginsDir, TEXT("Runtime"), TEXT("Steam"), TEXT("SteamController"), TEXT("Content"));
-			FString VdfPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(*ContentDir, TEXT("Controller.vdf")));
-
-			bool bInited = SteamController()->Init(TCHAR_TO_ANSI(*VdfPath));
-			UE_LOG(LogSteamController, Log, TEXT("SteamController %s initialized with vdf file '%s'."), bInited ? TEXT("could not be") : TEXT("has been"), *VdfPath);
-
-			// [RCL] 2014-05-05 FIXME: disable when could not init?
-			if (bInited)
-			{
-				FMemory::Memzero(ControllerStates, sizeof(ControllerStates));
-			}
+			bool bInited = SteamController()->Init();
+			UE_LOG(LogSteamController, Log, TEXT("SteamController %s initialized."), bInited ? TEXT("could not be") : TEXT("has been"));
 		}
 		else
 		{
 			UE_LOG(LogSteamController, Log, TEXT("SteamController is not available"));
 		}
 
-		InitialButtonRepeatDelay = 0.2f;
-		ButtonRepeatDelay = 0.1f;
+		InitActionHandles();
+	}
 
-		// set up mapping
-		Buttons[0] = FGamepadKeyNames::FaceButtonBottom;
-		Buttons[1] = FGamepadKeyNames::FaceButtonRight;
-		Buttons[2] = FGamepadKeyNames::FaceButtonLeft;
-		Buttons[3] = FGamepadKeyNames::FaceButtonTop;
-		Buttons[4] = FGamepadKeyNames::LeftShoulder;
-		Buttons[5] = FGamepadKeyNames::RightShoulder;
-		Buttons[6] = FGamepadKeyNames::SpecialRight;
-		Buttons[7] = FGamepadKeyNames::SpecialLeft;
-		Buttons[8] = FGamepadKeyNames::LeftThumb;
-		Buttons[9] = FGamepadKeyNames::RightThumb;
-		Buttons[10] = FGamepadKeyNames::LeftTriggerThreshold;
-		Buttons[11] = FGamepadKeyNames::RightTriggerThreshold;
-		Buttons[12] = SteamControllerKeyNames::Touch0;
-		Buttons[13] = SteamControllerKeyNames::Touch1;
-		Buttons[14] = SteamControllerKeyNames::Touch2;
-		Buttons[15] = SteamControllerKeyNames::Touch3;
-		Buttons[16] = FGamepadKeyNames::LeftStickUp;
-		Buttons[17] = FGamepadKeyNames::LeftStickDown;
-		Buttons[18] = FGamepadKeyNames::LeftStickLeft;
-		Buttons[19] = FGamepadKeyNames::LeftStickRight;
-		Buttons[20] = FGamepadKeyNames::RightStickUp;
-		Buttons[21] = FGamepadKeyNames::RightStickDown;
-		Buttons[22] = FGamepadKeyNames::RightStickLeft;
-		Buttons[23] = FGamepadKeyNames::RightStickRight;
-		Buttons[24] = SteamControllerKeyNames::BackLeft;
-		Buttons[25] = SteamControllerKeyNames::BackLeft;
+	void InitActionHandles()
+	{
+		auto SteamControllerAPI = SteamController();
+		const UInputSettings* DefaultInputSettings = GetDefault<UInputSettings>();
+
+		if (SteamControllerAPI != nullptr && DefaultInputSettings != nullptr)
+		{
+			ControllerStates.Reserve(STEAM_CONTROLLER_MAX_COUNT);
+
+			// We need to iterate through all defined actions and get their names 
+			// avoiding duplicates due to actions being bound to multiple inputs
+			// and store SteamController handles to the actions.
+
+			// @HACK: Currently there is no way to fire an input event by action
+			// name alone so what we do is we grab the first bound FKey to an event
+			// and map the Steam controller action to it instead. Super dirty.
+
+			TArray<FName> ActionNames;
+			DefaultInputSettings->GetActionNames(ActionNames);
+			for (int32 i = 0; i < ActionNames.Num(); ++i)
+			{
+				const FInputActionKeyMapping* ActionKeyMapping = DefaultInputSettings->ActionMappings.FindByPredicate([&](const FInputActionKeyMapping& KeyMapping)
+				{
+					return KeyMapping.ActionName == ActionNames[i];
+				});
+
+				if (ActionKeyMapping != nullptr)
+				{
+					DigitalActionFakeKeys.Add(ActionNames[i], ActionKeyMapping->Key);
+				}
+
+				DigitalActionNames.Add(ActionNames[i], SteamControllerAPI->GetDigitalActionHandle(TCHAR_TO_ANSI(*ActionNames[i].ToString())));
+			}
+
+			TArray<FName> AxisNames;
+			DefaultInputSettings->GetAxisNames(AxisNames);
+			for (int32 i = 0; i < AxisNames.Num(); ++i)
+			{
+				const FInputAxisKeyMapping* AxisKeyMapping = DefaultInputSettings->AxisMappings.FindByPredicate([&](const FInputAxisKeyMapping& AxisMapping)
+				{
+					return AxisMapping.AxisName == AxisNames[i];
+				});
+
+				if (AxisKeyMapping != nullptr)
+				{
+					AxisActionFakeKeys.Add(ActionNames[i], AxisKeyMapping->Key);
+				}
+
+				AnalogActionNames.Add(AxisNames[i], SteamControllerAPI->GetDigitalActionHandle(TCHAR_TO_ANSI(*AxisNames[i].ToString())));
+			}
+		}
+		else
+		{
+			UE_LOG(LogSteamController, Log, TEXT("SteamController failed grabbing Action Handles."));
+		}
+	}
+
+	FSteamControllerState* InitNewController(ControllerHandle_t ControllerHandle)
+	{
+		// Initialize Controller State map
+
+		FSteamControllerState& NewState = ControllerStates.Add(ControllerHandle);
+
+		for (auto It = DigitalActionNames.CreateConstIterator(); It; ++It)
+		{
+			NewState.DigitalActionMap.Add(It->Value);
+		}
+
+		for (auto It = AnalogActionNames.CreateConstIterator(); It; ++It)
+		{
+			NewState.AnalogActionMap.Add(It->Value);
+		}
+
+		return &NewState;
 	}
 
 	virtual ~FSteamController()
@@ -159,113 +168,76 @@ public:
 
 	virtual void SendControllerEvents() override
 	{
-		SteamControllerState_t ControllerState;
-
-		if (SteamController() != nullptr)
+		auto SteamControllerAPI = SteamController();
+		if (SteamControllerAPI == nullptr)
 		{
-			const double CurrentTime = FPlatformTime::Seconds();
+			UE_LOG(LogSteamController, Error, TEXT("SteamController module failed to get SteamController API in SendControllerEvents."));
+		}
 
-			for (uint32 ControllerIndex=0; ControllerIndex < MAX_STEAM_CONTROLLERS; ++ControllerIndex)
+		const UInputSettings* DefaultInputSettings = GetDefault<UInputSettings>();
+		if (DefaultInputSettings == nullptr)
+		{
+			UE_LOG(LogSteamController, Error, TEXT("SteamController module failed to get Input Settings in SendControllerEvents."));
+		}
+
+		ControllerHandle_t ControllerHandles[STEAM_CONTROLLER_MAX_COUNT];
+		int32 NumControllers = SteamController()->GetConnectedControllers(ControllerHandles);
+		for (int32 i = 0; i < NumControllers; ++i)
+		{
+			FSteamControllerState* ControllerState = ControllerStates.Find(ControllerHandles[i]);
+			if (ControllerState == nullptr)
 			{
-				if (SteamController()->GetControllerState(ControllerIndex, &ControllerState))
+				ControllerState = InitNewController(ControllerHandles[i]);
+			}
+			if (ControllerState == nullptr)
+			{
+				UE_LOG(LogSteamController, Error, TEXT("SteamController connected but unable to handle its state."));
+			}
+
+			// Route Digital Action state changes as fake button presses
+			// @TODO: When Epic supports triggering of Input events by action name
+			// we should switch to doing that instead
+			for (auto It = ControllerState->DigitalActionMap.CreateIterator(); It; ++It)
+			{
+				ControllerDigitalActionData_t NewActionState = SteamControllerAPI->GetDigitalActionData(ControllerHandles[i], It->Key);
+				if (NewActionState.bActive && NewActionState.bState != It->Value.bState)
 				{
-					if (ControllerState.unPacketNum != ControllerStates[ControllerIndex].PacketNum )
+					const FName* ActionName = DigitalActionNames.FindKey(It->Key);
+					if (ActionName != nullptr)
 					{
-						bool CurrentStates[MAX_NUM_CONTROLLER_BUTTONS] = {0};
-			
-						// Get the current state of all buttons
-						CurrentStates[0] = !!(ControllerState.ulButtons & STEAM_BUTTON_3_MASK);
-						CurrentStates[1] = !!(ControllerState.ulButtons & STEAM_BUTTON_1_MASK);
-						CurrentStates[2] = !!(ControllerState.ulButtons & STEAM_BUTTON_2_MASK);
-						CurrentStates[3] = !!(ControllerState.ulButtons & STEAM_BUTTON_0_MASK);
-						CurrentStates[4] = !!(ControllerState.ulButtons & STEAM_LEFT_BUMPER_MASK);
-						CurrentStates[5] = !!(ControllerState.ulButtons & STEAM_RIGHT_BUMPER_MASK);
-						CurrentStates[6] = !!(ControllerState.ulButtons & STEAM_BUTTON_ESCAPE_MASK);
-						CurrentStates[7] = !!(ControllerState.ulButtons & STEAM_BUTTON_MENU_MASK);
-						CurrentStates[8] = !!(ControllerState.ulButtons & STEAM_BUTTON_LEFTPAD_CLICKED_MASK);
-						CurrentStates[9] = !!(ControllerState.ulButtons & STEAM_BUTTON_RIGHTPAD_CLICKED_MASK);
-						CurrentStates[10] = !!(ControllerState.ulButtons & STEAM_LEFT_TRIGGER_MASK);
-						CurrentStates[11] = !!(ControllerState.ulButtons & STEAM_RIGHT_TRIGGER_MASK);
-						CurrentStates[12] = !!(ControllerState.ulButtons & STEAM_TOUCH_0_MASK);
-						CurrentStates[13] = !!(ControllerState.ulButtons & STEAM_TOUCH_1_MASK);
-						CurrentStates[14] = !!(ControllerState.ulButtons & STEAM_TOUCH_2_MASK);
-						CurrentStates[15] = !!(ControllerState.ulButtons & STEAM_TOUCH_3_MASK);
-						CurrentStates[16] = !!(ControllerState.sLeftPadY > LEFT_THUMBPAD_DEADZONE);
-						CurrentStates[17] = !!(ControllerState.sLeftPadY < -LEFT_THUMBPAD_DEADZONE);
-						CurrentStates[18] = !!(ControllerState.sLeftPadX < -LEFT_THUMBPAD_DEADZONE);
-						CurrentStates[19] = !!(ControllerState.sLeftPadX > LEFT_THUMBPAD_DEADZONE);
-						CurrentStates[20] = !!(ControllerState.sRightPadY > RIGHT_THUMBPAD_DEADZONE);
-						CurrentStates[21] = !!(ControllerState.sRightPadY < -RIGHT_THUMBPAD_DEADZONE);
-						CurrentStates[22] = !!(ControllerState.sRightPadX < -RIGHT_THUMBPAD_DEADZONE);
-						CurrentStates[23] = !!(ControllerState.sRightPadX > RIGHT_THUMBPAD_DEADZONE);
-						CurrentStates[24] = !!(ControllerState.ulButtons & STEAM_BUTTON_BACK_LEFT_MASK);
-						CurrentStates[25] = !!(ControllerState.ulButtons & STEAM_BUTTON_BACK_RIGHT_MASK);
-
-						if (ControllerStates[ControllerIndex].LeftXAnalog != ControllerState.sLeftPadX)
+						FKey* FakeKey = DigitalActionFakeKeys.Find(*ActionName);
+						if (FakeKey != nullptr)
 						{
-							MessageHandler->OnControllerAnalog(FGamepadKeyNames::LeftAnalogX, ControllerIndex, ShortToNormalizedFloat(ControllerState.sLeftPadX));
-							ControllerStates[ControllerIndex].LeftXAnalog = ControllerState.sLeftPadX;
-						}
-
-						if (ControllerStates[ControllerIndex].LeftYAnalog != ControllerState.sLeftPadY)
-						{
-							MessageHandler->OnControllerAnalog(FGamepadKeyNames::LeftAnalogY, ControllerIndex, ShortToNormalizedFloat(ControllerState.sLeftPadY));
-							ControllerStates[ControllerIndex].LeftYAnalog = ControllerState.sLeftPadY;
-						}
-
-						if (ControllerStates[ControllerIndex].RightXAnalog != ControllerState.sRightPadX)
-						{
-							MessageHandler->OnControllerAnalog(FGamepadKeyNames::RightAnalogX, ControllerIndex, ShortToNormalizedFloat(ControllerState.sRightPadX));
-							ControllerStates[ControllerIndex].RightXAnalog = ControllerState.sRightPadX;
-						}
-
-						if (ControllerStates[ControllerIndex].RightYAnalog != ControllerState.sRightPadY)
-						{
-							MessageHandler->OnControllerAnalog(FGamepadKeyNames::RightAnalogY, ControllerIndex, ShortToNormalizedFloat(ControllerState.sRightPadY));
-							ControllerStates[ControllerIndex].RightYAnalog = ControllerState.sRightPadY;
-						}
-
-
-						// For each button check against the previous state and send the correct message if any
-						for (int32 ButtonIndex = 0; ButtonIndex < MAX_NUM_CONTROLLER_BUTTONS; ++ButtonIndex)
-						{
-							if (CurrentStates[ButtonIndex] != ControllerStates[ControllerIndex].ButtonStates[ButtonIndex])
+							if (NewActionState.bState)
 							{
-								if (CurrentStates[ButtonIndex])
-								{
-									MessageHandler->OnControllerButtonPressed(Buttons[ButtonIndex], ControllerIndex, false);
-								}
-								else
-								{
-									MessageHandler->OnControllerButtonReleased(Buttons[ButtonIndex], ControllerIndex, false);
-								}
-
-								if (CurrentStates[ButtonIndex] != 0)
-								{
-									// this button was pressed - set the button's NextRepeatTime to the InitialButtonRepeatDelay
-									ControllerStates[ControllerIndex].NextRepeatTime[ButtonIndex] = CurrentTime + InitialButtonRepeatDelay;
-								}
+								// This is an absolute fucking hack that could be resolved
+								// if the MessageHandler could fire off input events by name.
+								MessageHandler->OnControllerButtonPressed(FakeKey->GetFName(), i, false);
 							}
-
-							// Update the state for next time
-							ControllerStates[ControllerIndex].ButtonStates[ButtonIndex] = CurrentStates[ButtonIndex];
+							else
+							{
+								MessageHandler->OnControllerButtonReleased(FakeKey->GetFName(), i, false);
+							}
 						}
-
-						ControllerStates[ControllerIndex].PacketNum = ControllerState.unPacketNum;
+						else
+						{
+							UE_LOG(LogSteamController, Error, TEXT("SteamController recieved input for action %s but this action has no key assigned to it."));
+						}
 					}
-				}
-
-				for (int32 ButtonIndex = 0; ButtonIndex < MAX_NUM_CONTROLLER_BUTTONS; ++ButtonIndex)
-				{
-					if (ControllerStates[ControllerIndex].ButtonStates[ButtonIndex] != 0 && ControllerStates[ControllerIndex].NextRepeatTime[ButtonIndex] <= CurrentTime)
+					else
 					{
-						MessageHandler->OnControllerButtonPressed(Buttons[ButtonIndex], ControllerIndex, true);
-
-						// set the button's NextRepeatTime to the ButtonRepeatDelay
-						ControllerStates[ControllerIndex].NextRepeatTime[ButtonIndex] = CurrentTime + ButtonRepeatDelay;
+						UE_LOG(LogSteamController, Error, TEXT("SteamController recieved input for non-existant action."));
 					}
+
+					// Update our state
+					It->Value = NewActionState;
 				}
 			}
+
+			// @TODO: Read Analog events once Epic supports firing input events by action name
+			// We can't do this easily currently as SteamController analog changes happen across
+			// two axes instead of one and mapping these two axes to fake key overrides would
+			// be an absolute pain in the ass			
 		}
 	}
 	
@@ -277,43 +249,40 @@ public:
 			return;
 		}
 
-		if ((ControllerId >= 0) && (ControllerId < MAX_STEAM_CONTROLLERS))
+		ControllerHandle_t ControllerHandles[STEAM_CONTROLLER_MAX_COUNT];
+		int32 NumControllers = SteamController()->GetConnectedControllers(ControllerHandles);
+
+		if ((ControllerId >= 0) && (ControllerId < NumControllers))
 		{
-			FControllerState& ControllerState = ControllerStates[ControllerId];
-
-			ControllerState.VibeValues.LeftLarge = Value;
-
-			UpdateVibration(ControllerId);
+			// Map the float values from [0,1] to be more reasonable values for the SteamController.  The docs say that [100,2000] are reasonable values
+			const float Intensity = FMath::Clamp(Value * 2000.f, 0.f, 2000.f);
+			if (Intensity > 0.f)
+			{
+				SteamController()->TriggerHapticPulse(ControllerId, ChannelType == FForceFeedbackChannelType::LEFT_LARGE ? ESteamControllerPad::k_ESteamControllerPad_Left : ESteamControllerPad::k_ESteamControllerPad_Right, Intensity);
+			}
 		}
 	}
 
 	void SetChannelValues(int32 ControllerId, const FForceFeedbackValues &Values) override
 	{
-		if ((ControllerId >= 0) && (ControllerId < MAX_STEAM_CONTROLLERS))
-		{
-			FControllerState& ControllerState = ControllerStates[ControllerId];
-			ControllerState.VibeValues = Values;
+		ControllerHandle_t ControllerHandles[STEAM_CONTROLLER_MAX_COUNT];
+		int32 NumControllers = SteamController()->GetConnectedControllers(ControllerHandles);
 
-			UpdateVibration(ControllerId);
-		}
-	}
-
-	void UpdateVibration(int32 ControllerId)
-	{
-		const FControllerState& ControllerState = ControllerStates[ControllerId];
-		ISteamController* const Controller = SteamController();
-
-		// Map the float values from [0,1] to be more reasonable values for the SteamController.  The docs say that [100,2000] are reasonable values
- 		const float LeftIntensity = FMath::Clamp(ControllerState.VibeValues.LeftLarge * 2000.f, 0.f, 2000.f);
-		if (LeftIntensity > 0.f)
+		if ((ControllerId >= 0) && (ControllerId < NumControllers))
 		{
-			Controller->TriggerHapticPulse(ControllerId, ESteamControllerPad::k_ESteamControllerPad_Left, LeftIntensity);
-		}
- 
- 		const float RightIntensity = FMath::Clamp(ControllerState.VibeValues.RightLarge * 2000.f, 0.f, 2000.f);
-		if (RightIntensity > 0.f)
-		{
-			Controller->TriggerHapticPulse(ControllerId, ESteamControllerPad::k_ESteamControllerPad_Right, RightIntensity);
+			// Map the float values from [0,1] to be more reasonable values for the SteamController.  The docs say that [100,2000] are reasonable values
+			const float LeftIntensity = FMath::Clamp(Values.LeftLarge * 2000.f, 0.f, 2000.f);
+			if (LeftIntensity > 0.f)
+			{
+				SteamController()->TriggerHapticPulse(ControllerId, ESteamControllerPad::k_ESteamControllerPad_Left, LeftIntensity);
+			}
+
+			// Map the float values from [0,1] to be more reasonable values for the SteamController.  The docs say that [100,2000] are reasonable values
+			const float RightIntensity = FMath::Clamp(Values.RightLarge * 2000.f, 0.f, 2000.f);
+			if (RightIntensity > 0.f)
+			{
+				SteamController()->TriggerHapticPulse(ControllerId, ESteamControllerPad::k_ESteamControllerPad_Left, RightIntensity);
+			}
 		}
 	}
 
@@ -329,46 +298,13 @@ public:
 
 private:
 
-	struct FControllerState
-	{
-		/** If packet num matches that on your prior call, then the controller state hasn't been changed since 
-		  * your last call and there is no need to process it.
-		  */
-		uint32 PacketNum;
+	ControllerActionSetHandle_t ActionSetHandles[STEAM_CONTROLLER_MAX_ANALOG_ACTIONS];
+	TMap<FName, ControllerDigitalActionHandle_t> DigitalActionNames;
+	TMap<FName, ControllerAnalogActionHandle_t> AnalogActionNames;
+	TMap<FName, FKey> DigitalActionFakeKeys;
+	TMap<FName, FKey> AxisActionFakeKeys;
 
-		/** Raw Left thumb x analog value */
-		short LeftXAnalog;
-
-		/** Raw left thumb y analog value */
-		short LeftYAnalog;
-
-		/** Raw Right thumb x analog value */
-		short RightXAnalog;
-
-		/** Raw Right thumb x analog value */
-		short RightYAnalog;
-
-		/** Last frame's button states, so we only send events on edges */
-		bool ButtonStates[MAX_NUM_CONTROLLER_BUTTONS];
-
-		/** Next time a repeat event should be generated for each button */
-		double NextRepeatTime[MAX_NUM_CONTROLLER_BUTTONS];
-
-		/** Values for force feedback on this controller.  We only consider the LEFT_LARGE channel for SteamControllers */
-		FForceFeedbackValues VibeValues;
-	}; 
-
-	/** Controller states */
-	FControllerState ControllerStates[MAX_STEAM_CONTROLLERS];
-
-	/** Delay before sending a repeat message after a button was first pressed */
-	float InitialButtonRepeatDelay;
-
-	/** Delay before sending a repeat message after a button has been pressed for a while */
-	float ButtonRepeatDelay;
-
-	/** Mapping of controller buttons */
-	FGamepadKeyNames::Type Buttons[MAX_NUM_CONTROLLER_BUTTONS];
+	TMap<ControllerHandle_t, FSteamControllerState> ControllerStates;	
 
 	/** handler to send all messages to */
 	TSharedRef<FGenericApplicationMessageHandler> MessageHandler;
