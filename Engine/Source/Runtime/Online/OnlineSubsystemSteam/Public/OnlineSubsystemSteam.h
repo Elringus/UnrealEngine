@@ -239,6 +239,7 @@ public:
 	// FOnlineSubsystemSteam
 
 	FString GetSteamLanguage();
+	void UnlockAchievement(const FString& achievementName);
 
 	/**
 	 * Whether or not the Steam Client interfaces are available; these interfaces are only available, if the Steam Client program is running

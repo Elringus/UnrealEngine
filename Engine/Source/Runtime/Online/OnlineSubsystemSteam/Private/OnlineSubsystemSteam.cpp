@@ -753,3 +753,9 @@ FString FOnlineSubsystemSteam::GetSteamLanguage()
 	}
 	return steamLanguage;
 }
+
+void FOnlineSubsystemSteam::UnlockAchievement(const FString& achievementName)
+{
+	SteamUserStats()->SetAchievement(TCHAR_TO_UTF8(*achievementName));
+	SteamUserStats()->StoreStats();
+}
