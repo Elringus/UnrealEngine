@@ -4762,10 +4762,10 @@ void UParticleSystemComponent::InitializeSystem()
 		// Don't warn in a commandlet, we're expected not to have a scene / FX system.
 		if (!IsRunningCommandlet() && !IsRunningDedicatedServer())
 		{
-			UE_LOG(LogParticles,Warning,TEXT("InitializeSystem called on an unregistered component. Template=%s Component=%s"),
-				Template ? *Template->GetPathName() : TEXT("NULL"),
-				*GetPathName()
-				);
+			//UE_LOG(LogParticles,Warning,TEXT("InitializeSystem called on an unregistered component. Template=%s Component=%s"),
+			//	Template ? *Template->GetPathName() : TEXT("NULL"),
+			//	*GetPathName()
+			//	);
 		}
 		return;
 	}
