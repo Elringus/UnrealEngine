@@ -124,7 +124,7 @@ bool FAnalogCursor::HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEv
 		return true;
 	}
 
-	if (Key == EKeys::Gamepad_FaceButton_Bottom)
+	if (Key == EKeys::Gamepad_FaceButton_Bottom && !InKeyEvent.IsRepeat())
 	{
 		FPointerEvent MouseEvent(
 			0,
@@ -157,8 +157,7 @@ bool FAnalogCursor::HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEven
 		return true;
 	}
 
-	// Bottom face button (hardcoding is dirty, you know?..) is a click
-	if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Gamepad_RightShoulder || Key == EKeys::Gamepad_RightTrigger)
+	if (Key == EKeys::Gamepad_FaceButton_Bottom && !InKeyEvent.IsRepeat())
 	{
 		FPointerEvent MouseEvent(
 			0,
@@ -170,7 +169,7 @@ bool FAnalogCursor::HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEven
 			SlateApp.GetPlatformApplication()->GetModifierKeys()
 			);
 
-		SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
+		return SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
 	}
 	
 	return false;
